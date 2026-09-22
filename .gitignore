@@ -1,0 +1,12 @@
+# Per-machine runtime state (font size preference), written by the plugin
+# itself - not something that should ship in the repo or get overwritten
+# by a `git pull` on someone else's machine.
+state.json
+
+# Editors & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
