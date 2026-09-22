@@ -6,9 +6,10 @@ import qs.Ui
 import qs.Commons
 import "Model.js" as Model
 
-// Standalone floating window: browse tcb:: Unity commands, fill in their
-// parameters, run them, and read back the result. Opened/closed by
-// BarWidget.qml's chip; this Item owns all state so the chip stays dumb.
+// Standalone floating window: browse Unity CLI commands under a
+// user-configurable namespace (see Settings), fill in their parameters,
+// run them, and read back the result. Opened/closed by BarWidget.qml's
+// chip; this Item owns all state so the chip stays dumb.
 Item {
   id: root
 
@@ -16,17 +17,17 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.2.2"
+  readonly property string appVersion: "1.3.0"
 
   property var bar: null
   readonly property bool opened: window.visible
 
   function open() {
     window.visible = true
-    // Always resets to tcb:: on open, regardless of what it was left at
-    // last time - the tcb:: namespace is the point of this tool, "show me
-    // everything" is an occasional escape hatch, not something that should
-    // silently persist across sessions.
+    // Always resets to the configured namespace on open, regardless of
+    // what it was left at last time - that's the point of this tool,
+    // "show me everything" is an occasional escape hatch, not something
+    // that should silently persist across sessions.
     tcbOnly = true
     refreshCommands()
     Qt.callLater(function() {
@@ -49,7 +50,40 @@ Item {
   function setFontSize(choice) {
     if (choice === fontSizeChoice) return
     fontSizeChoice = choice
-    settingsFile.setText(JSON.stringify({ fontSize: choice }))
+    saveSettings()
+  }
+
+  // ---- command namespace (persisted) -------------------------------------
+  // What "tcb:: commands only" actually filters on. Defaults to "tcb::" for
+  // backward compatibility, but this plugin is used by more than one
+  // person's project now - everyone's custom [CliCommand] methods live
+  // under their own prefix, so it has to be settable, not hardcoded.
+  property string namespace: "tcb::"
+
+  function setNamespace(value) {
+    var trimmed = String(value || "").trim()
+    if (trimmed === "" || trimmed === namespace) return
+    namespace = trimmed
+    saveSettings()
+    if (tcbOnly) refreshCommands()
+  }
+
+  // ---- settings dialog ------------------------------------------------------
+  property bool settingsOpen: false
+
+  function openSettings() {
+    namespaceDraftField.text = namespace
+    settingsOpen = true
+    Qt.callLater(function() { namespaceDraftField.forceActiveFocus() })
+  }
+  function closeSettings() { settingsOpen = false }
+  function saveSettingsDialog() {
+    setNamespace(namespaceDraftField.text)
+    settingsOpen = false
+  }
+
+  function saveSettings() {
+    settingsFile.setText(JSON.stringify({ fontSize: fontSizeChoice, namespace: namespace }))
   }
 
   FileView {
@@ -62,6 +96,8 @@ Item {
         var parsed = JSON.parse(text() || "{}")
         if (parsed && (parsed.fontSize === "small" || parsed.fontSize === "medium" || parsed.fontSize === "large"))
           root.fontSizeChoice = parsed.fontSize
+        if (parsed && typeof parsed.namespace === "string" && parsed.namespace.trim() !== "")
+          root.namespace = parsed.namespace.trim()
       } catch (e) { /* ignore malformed state file */ }
     }
   }
@@ -93,7 +129,7 @@ Item {
     commandsLoading = true
     listStatus = null
     listProc.command = tcbOnly
-      ? ["unity", "cmd", "--query", "tcb::", "--json", "--timeout", "15"]
+      ? ["unity", "cmd", "--query", namespace, "--json", "--timeout", "15"]
       : ["unity", "cmd", "--json", "--timeout", "15"]
     listProc.running = true
   }
@@ -158,17 +194,22 @@ Item {
     return [{ value: clearSentinel, label: "— Clear selection —", description: "Leave this parameter unset" }].concat(names)
   }
 
+  // These two rely on a project convention, not a Unity built-in: a
+  // "<namespace>get_unit_names" / "<namespace>get_manager_names" command
+  // that returns a plain string array. That's how this plugin's own
+  // author's project (tcb::) does it - anyone adopting a different
+  // namespace needs the equivalent commands for the dropdowns to work.
   function refreshUnitNames() {
     if (unitNamesProc.running) return
     unitNamesLoading = true
-    unitNamesProc.command = ["unity", "cmd", "tcb::get_unit_names", "--json", "--timeout", "10"]
+    unitNamesProc.command = ["unity", "cmd", namespace + "get_unit_names", "--json", "--timeout", "10"]
     unitNamesProc.running = true
   }
 
   function refreshManagerNames() {
     if (managerNamesProc.running) return
     managerNamesLoading = true
-    managerNamesProc.command = ["unity", "cmd", "tcb::get_manager_names", "--json", "--timeout", "10"]
+    managerNamesProc.command = ["unity", "cmd", namespace + "get_manager_names", "--json", "--timeout", "10"]
     managerNamesProc.running = true
   }
 
@@ -427,9 +468,10 @@ Item {
               }
             }
 
-            // Namespace filter. Always resets to tcb::-only on open() -
-            // "show me everything" is a deliberate escape hatch, not
-            // something that should silently carry over between sessions.
+            // Namespace filter. Always resets to <namespace>-only on
+            // open() - "show me everything" is a deliberate escape hatch,
+            // not something that should silently carry over between
+            // sessions.
             Row {
               width: parent.width
               spacing: Style.space(8)
@@ -445,10 +487,18 @@ Item {
               Text {
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.tcbOnly ? "tcb:: commands only" : "All commands"
+                text: root.tcbOnly ? (root.namespace + " commands only") : "All commands"
                 color: Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: root.fsCaption
+              }
+              PanelActionButton {
+                anchors.verticalCenter: parent.verticalCenter
+                iconText: "󰒓"
+                tooltipText: "Change command namespace"
+                foreground: Color.foreground
+                fontFamily: root.fontFamily
+                onClicked: root.openSettings()
               }
             }
 
@@ -966,6 +1016,104 @@ Item {
                     text: root.lastResult && root.lastResult.payload ? JSON.stringify(root.lastResult.payload, null, 2) : ""
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+
+      // ---- settings dialog --------------------------------------------------
+      Rectangle {
+        id: settingsScrim
+        anchors.fill: parent
+        visible: root.settingsOpen
+        color: Util.alpha(Color.background, 0.75)
+
+        // Swallows clicks so they don't reach the command list/form behind
+        // the scrim - closing requires Cancel/Save/Escape, not a stray click.
+        MouseArea { anchors.fill: parent }
+
+        Rectangle {
+          id: settingsPanel
+          width: Math.min(parent.width - Style.space(60), Style.space(440))
+          height: settingsColumn.implicitHeight + Style.space(40)
+          anchors.centerIn: parent
+          radius: Style.cornerRadius
+          color: Color.background
+          border.width: 1
+          border.color: Util.alpha(Color.foreground, 0.2)
+
+          Column {
+            id: settingsColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Style.space(20)
+            spacing: Style.space(14)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Settings"
+              color: Color.foreground
+              font.family: root.fontFamily
+              font.pixelSize: root.fsTitle
+              font.bold: true
+            }
+
+            PanelSeparator { foreground: Color.foreground }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Text {
+                textFormat: Text.PlainText
+                text: "Command namespace"
+                color: Color.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fsBody
+                font.bold: true
+              }
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "The Unity CLI namespace this tool searches by default (e.g. \"tcb::\" or \"myco::\"). Your project's [CliCommand] methods need to live under this prefix - including \""
+                  + root.namespace + "get_unit_names\" and \"" + root.namespace + "get_manager_names\" if you want the unit/manager dropdowns to work."
+                color: Qt.darker(Color.foreground, 1.5)
+                font.family: root.fontFamily
+                font.pixelSize: root.fsCaption
+              }
+              TextField {
+                id: namespaceDraftField
+                width: parent.width
+                foreground: Color.foreground
+                accent: Color.accent
+                font.family: root.fontFamily
+                font.pixelSize: root.fsBody
+                placeholderText: "tcb::"
+                Keys.onReturnPressed: root.saveSettingsDialog()
+                Keys.onEscapePressed: root.closeSettings()
+              }
+            }
+
+            Row {
+              anchors.right: parent.right
+              spacing: Style.space(10)
+
+              Button {
+                text: "Cancel"
+                bordered: true
+                focusable: true
+                fontFamily: root.fontFamily
+                onClicked: root.closeSettings()
+              }
+              Button {
+                text: "Save"
+                bordered: true
+                focusable: true
+                fontFamily: root.fontFamily
+                onClicked: root.saveSettingsDialog()
               }
             }
           }

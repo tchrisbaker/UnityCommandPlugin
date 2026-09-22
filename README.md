@@ -1,11 +1,12 @@
 # Unity Commander
 
-An [Omarchy](https://omarchy.org/) bar plugin for browsing and running Unity CLI commands (the `tcb::` namespace by default, or every command the connected Editor/Player exposes) from a searchable panel — no terminal required.
+An [Omarchy](https://omarchy.org/) bar plugin for browsing and running Unity CLI commands — under your own namespace, or every command the connected Editor/Player exposes — from a searchable panel, no terminal required.
 
 ## Features
 
 - **Fuzzy search** across commands, keyboard-driven (arrow keys + Enter) or by click
-- **Toggle** between "tcb:: commands only" and every command available; always resets to tcb:: on open
+- **Configurable namespace** (⚙ next to the toggle): defaults to `tcb::`, but any project's prefix works — see [Configuring your namespace](#configuring-your-namespace) below
+- **Toggle** between "`<namespace>` commands only" and every command available; always resets to your configured namespace on open
 - **Auto-generated parameter forms**: checkboxes for booleans, fuzzy-searchable dropdowns for `unit`/`*manager*` parameters (refreshed live from the connected Editor each time you open the dropdown, with a way to clear the selection), number steppers (with an explicit "Clear" for optional ones), text fields for everything else — required vs. optional is called out on every field
 - **Run** a command and get the result back as a readable, foldable view (long lists collapse to just their first item's title, click to expand) — or flip to raw JSON
 - **Copy command**: puts the exact `unity cmd ...` invocation, with your current parameter values, on the clipboard
@@ -33,6 +34,17 @@ omarchy plugin enable chris.unity-commander
 ## Usage
 
 Click the **UC** chip in the bar (or `omarchy-shell shell toggle chris.unity-commander`). Search for a command, fill in its parameters, hit **Run command**.
+
+## Configuring your namespace
+
+By default Unity Commander filters to commands under the `tcb::` namespace (this project's own convention). Click the **⚙** button next to the "commands only" toggle to open Settings and change it to whatever prefix your own `[CliCommand]` methods use — the change is saved and applied immediately.
+
+**Note on the unit/manager dropdowns:** parameters named `unit` or containing `manager` get a live, fuzzy-searchable dropdown instead of a plain text field. Populating that dropdown is *not* a Unity CLI built-in — Unity Commander expects your project to expose two specific commands that return a plain JSON string array:
+
+- `<namespace>get_unit_names`
+- `<namespace>get_manager_names`
+
+For example, with the namespace set to `myco::`, the plugin will call `myco::get_unit_names` and `myco::get_manager_names` each time one of those dropdowns is opened. If your project doesn't implement commands with those exact names under your chosen namespace, the dropdowns will just come back empty — everything else in the plugin works regardless.
 
 ## Files
 

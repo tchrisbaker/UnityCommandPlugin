@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "chris.unity-commander",
   "name": "Unity Commander",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "author": "Chris Baker",
   "license": "MIT",
-  "description": "Browse and run tcb:: Unity CLI commands from a searchable panel, with parameter forms, unit/manager pickers, and clear success/error results.",
+  "description": "Browse and run Unity CLI commands under a configurable namespace from a searchable panel, with parameter forms, unit/manager pickers, and clear success/error results.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Unity Commander",
-    "description": "Browse and run tcb:: Unity commands",
+    "description": "Browse and run Unity CLI commands",
     "category": "Development",
     "allowMultiple": false
   }

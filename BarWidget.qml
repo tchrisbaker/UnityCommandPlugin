@@ -30,7 +30,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "UC"
-    tooltipText: "Unity Commander — browse & run tcb:: commands"
+    tooltipText: "Unity Commander — browse & run Unity CLI commands"
     onPressed: function(buttonId) { root.toggle() }
   }
 }
