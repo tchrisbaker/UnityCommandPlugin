@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.6.0"
+  readonly property string appVersion: "1.6.1"
 
   property var bar: null
   readonly property bool opened: window.visible
@@ -131,7 +131,15 @@ Item {
 
   FileView {
     id: settingsFile
-    path: Quickshell.env("HOME") + "/.config/omarchy/plugins/chris.unity-commander/state.json"
+    // Deliberately NOT inside the plugin's own directory: Omarchy's plugin
+    // dev-reload watches that whole tree with inotify (close_write/create/
+    // delete/move) and does a full reload - including recreating this
+    // window, which resets it to closed - on any write there. Writing our
+    // own state file inside it would self-trigger that reload on every
+    // command run (recordRecentCommand saves on every run), which is
+    // exactly what was closing the window unexpectedly. Same location
+    // Omarchy's own first-party plugins (e.g. weather) use for this reason.
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/chris.unity-commander.json"
     watchChanges: false
     printErrors: false
     onLoaded: {
