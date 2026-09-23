@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.3.0"
+  readonly property string appVersion: "1.4.0"
 
   property var bar: null
   readonly property bool opened: window.visible
@@ -82,8 +82,20 @@ Item {
     settingsOpen = false
   }
 
+  // ---- recently-run commands (MRU, persisted) ------------------------------
+  readonly property int maxRecentCommands: 8
+  property var recentCommandNames: []
+
+  function recordRecentCommand(name) {
+    if (!name) return
+    var next = [name].concat(recentCommandNames.filter(function(n) { return n !== name }))
+    if (next.length > maxRecentCommands) next = next.slice(0, maxRecentCommands)
+    recentCommandNames = next
+    saveSettings()
+  }
+
   function saveSettings() {
-    settingsFile.setText(JSON.stringify({ fontSize: fontSizeChoice, namespace: namespace }))
+    settingsFile.setText(JSON.stringify({ fontSize: fontSizeChoice, namespace: namespace, recentCommands: recentCommandNames }))
   }
 
   FileView {
@@ -98,6 +110,8 @@ Item {
           root.fontSizeChoice = parsed.fontSize
         if (parsed && typeof parsed.namespace === "string" && parsed.namespace.trim() !== "")
           root.namespace = parsed.namespace.trim()
+        if (parsed && Array.isArray(parsed.recentCommands))
+          root.recentCommandNames = parsed.recentCommands.filter(function(n) { return typeof n === "string" })
       } catch (e) { /* ignore malformed state file */ }
     }
   }
@@ -113,7 +127,11 @@ Item {
     refreshCommands()
   }
   property string searchText: ""
-  readonly property var filteredCommands: Model.filterCommands(commands, searchText)
+  // Recent commands only bubble to the top when browsing (no search text) -
+  // once you're actively searching, plain fuzzy-match relevance wins.
+  readonly property var filteredCommands: searchText.trim().length === 0
+    ? Model.orderRecentFirst(commands, recentCommandNames)
+    : Model.filterCommands(commands, searchText)
   property int highlightedIndex: 0
   onSearchTextChanged: highlightedIndex = 0
   onFilteredCommandsChanged: {
@@ -263,6 +281,7 @@ Item {
     validationMessage = ""
     lastResult = null
     running = true
+    recordRecentCommand(selectedCommand.name)
     execProc.command = ["unity"].concat(Model.buildArgs(selectedCommand, paramValues))
     execProc.running = true
   }
@@ -533,7 +552,9 @@ Item {
 
             Text {
               textFormat: Text.PlainText
-              text: root.filteredCommands.length + " of " + root.commands.length + " commands"
+              text: (root.searchText.trim().length === 0 && root.recentCommandNames.length > 0)
+                ? "Recent first · " + root.filteredCommands.length + " of " + root.commands.length + " commands"
+                : root.filteredCommands.length + " of " + root.commands.length + " commands"
               color: Qt.darker(Color.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: root.fsCaption
@@ -561,6 +582,7 @@ Item {
                   radius: Style.cornerRadius
                   readonly property bool isSelected: root.selectedCommand && root.selectedCommand.name === modelData.name
                   readonly property bool isHighlighted: index === root.highlightedIndex
+                  readonly property bool isRecent: root.searchText.trim().length === 0 && root.recentCommandNames.indexOf(modelData.name) !== -1
                   color: isSelected ? Style.selectedFillFor(Color.foreground, Color.accent)
                     : (rowMouse.containsMouse || isHighlighted) ? Style.hoverFillFor(Color.foreground, Color.accent) : "transparent"
                   border.width: isHighlighted && !isSelected ? 1 : 0
@@ -580,7 +602,8 @@ Item {
                       width: parent.width
                       elide: Text.ElideRight
                       text: rowDelegate.modelData.name
-                      color: rowDelegate.isSelected ? Style.selectedStateColor(Color.foreground, Color.accent) : Color.foreground
+                      color: rowDelegate.isSelected ? Style.selectedStateColor(Color.foreground, Color.accent)
+                        : rowDelegate.isRecent ? Color.accent : Color.foreground
                       font.family: root.fontFamily
                       font.pixelSize: root.fsBody
                       font.bold: rowDelegate.isSelected

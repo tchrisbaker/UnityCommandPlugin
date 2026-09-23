@@ -91,6 +91,33 @@ function fuzzyScore(query, text) {
   return score
 }
 
+// Reorders `commands` so any whose name appears in `recentNames`
+// (most-recent-first) are moved to the front, in that recency order,
+// followed by the rest of `commands` in their original order. Names in
+// `recentNames` that no longer exist in `commands` are simply skipped.
+function orderRecentFirst(commands, recentNames) {
+  var list = commands || []
+  var recents = recentNames || []
+  if (recents.length === 0) return list.slice()
+
+  var byName = ({})
+  for (var i = 0; i < list.length; i++) byName[list[i].name] = list[i]
+
+  var seen = ({})
+  var ordered = []
+  for (var r = 0; r < recents.length; r++) {
+    var cmd = byName[recents[r]]
+    if (cmd && !seen[cmd.name]) {
+      ordered.push(cmd)
+      seen[cmd.name] = true
+    }
+  }
+  for (var j = 0; j < list.length; j++) {
+    if (!seen[list[j].name]) ordered.push(list[j])
+  }
+  return ordered
+}
+
 // Sort `commands` (each with `name`/`description`) by fuzzy match quality
 // against `query`. Name matches are weighted above description-only
 // matches. Empty query returns the list unchanged.
@@ -361,6 +388,7 @@ if (typeof module !== "undefined") {
     defaultValues: defaultValues,
     fuzzyScore: fuzzyScore,
     filterCommands: filterCommands,
+    orderRecentFirst: orderRecentFirst,
     buildArgs: buildArgs,
     missingRequiredFields: missingRequiredFields,
     isUnreachableMessage: isUnreachableMessage,
