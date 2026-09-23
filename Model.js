@@ -3,20 +3,34 @@
 // No QML/Quickshell dependencies so this can be unit-reasoned about (and
 // loaded with `import "Model.js" as Model`) in isolation.
 
+// The unit/manager dropdowns are this plugin's own convention (backed by
+// <namespace>get_unit_names / <namespace>get_manager_names commands - see
+// refreshUnitNames/refreshManagerNames in Window.qml), so they only kick in
+// for commands under the user's configured namespace, not arbitrary/built-in
+// Unity commands that happen to have a parameter named e.g. "unit".
+function isNamespacedCommand(commandName, namespace) {
+  if (!namespace) return false
+  return String(commandName || "").indexOf(namespace) === 0
+}
+
 function isUnitParam(param) {
-  return String((param && param.name) || "").toLowerCase() === "unit"
+  return String((param && param.name) || "").toLowerCase().indexOf("unit") !== -1
 }
 
 function isManagerParam(param) {
   return String((param && param.name) || "").toLowerCase().indexOf("manager") !== -1
 }
 
-// Which input widget a parameter should render as.
-function fieldKind(param) {
+// Which input widget a parameter should render as. `commandName`/`namespace`
+// are optional so existing non-namespace-aware callers keep working; without
+// them the unit/manager dropdowns are simply unavailable.
+function fieldKind(param, commandName, namespace) {
   var type = (param && param.type) || ""
   if (type === "Boolean") return "boolean"
-  if (isUnitParam(param)) return "unit"
-  if (isManagerParam(param)) return "manager"
+  if (isNamespacedCommand(commandName, namespace)) {
+    if (isUnitParam(param)) return "unit"
+    if (isManagerParam(param)) return "manager"
+  }
   if (type === "Int32" || type === "Int64") return "int"
   if (type === "Single" || type === "Double") return "float"
   return "text"

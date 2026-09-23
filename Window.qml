@@ -702,7 +702,7 @@ Item {
                     required property var modelData
                     width: parent.width
                     spacing: Style.space(6)
-                    readonly property string kind: Model.fieldKind(modelData)
+                    readonly property string kind: Model.fieldKind(modelData, root.selectedCommand ? root.selectedCommand.name : "", root.namespace)
                     readonly property var currentValue: root.paramValues[modelData.name]
 
                     Row {
