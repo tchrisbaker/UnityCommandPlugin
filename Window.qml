@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.4.0"
+  readonly property string appVersion: "1.6.0"
 
   property var bar: null
   readonly property bool opened: window.visible
@@ -60,26 +60,46 @@ Item {
   // under their own prefix, so it has to be settable, not hardcoded.
   property string namespace: "tcb::"
 
+  // Every namespace the user has ever switched/added to, so Settings can
+  // offer them back as a one-click list instead of retyping. `namespace`
+  // is always a member of this list (setNamespace/onLoaded both enforce it).
+  property var savedNamespaces: ["tcb::"]
+
   function setNamespace(value) {
     var trimmed = String(value || "").trim()
     if (trimmed === "" || trimmed === namespace) return
     namespace = trimmed
+    if (savedNamespaces.indexOf(trimmed) === -1) savedNamespaces = savedNamespaces.concat([trimmed])
     saveSettings()
     if (tcbOnly) refreshCommands()
+  }
+
+  // Drops a saved namespace. Refuses to remove the last one - there must
+  // always be at least one to fall back to. Removing the active namespace
+  // switches to whatever's left at the front of the list.
+  function removeNamespace(value) {
+    if (savedNamespaces.length <= 1) return
+    var next = savedNamespaces.filter(function(n) { return n !== value })
+    savedNamespaces = next
+    if (namespace === value) {
+      namespace = next[0]
+      if (tcbOnly) refreshCommands()
+    }
+    saveSettings()
   }
 
   // ---- settings dialog ------------------------------------------------------
   property bool settingsOpen: false
 
   function openSettings() {
-    namespaceDraftField.text = namespace
+    newNamespaceField.text = ""
     settingsOpen = true
-    Qt.callLater(function() { namespaceDraftField.forceActiveFocus() })
+    Qt.callLater(function() { newNamespaceField.forceActiveFocus() })
   }
   function closeSettings() { settingsOpen = false }
-  function saveSettingsDialog() {
-    setNamespace(namespaceDraftField.text)
-    settingsOpen = false
+  function addNamespaceFromDialog() {
+    setNamespace(newNamespaceField.text)
+    newNamespaceField.text = ""
   }
 
   // ---- recently-run commands (MRU, persisted) ------------------------------
@@ -94,8 +114,19 @@ Item {
     saveSettings()
   }
 
+  function removeRecentCommand(name) {
+    if (recentCommandNames.indexOf(name) === -1) return
+    recentCommandNames = recentCommandNames.filter(function(n) { return n !== name })
+    saveSettings()
+  }
+
   function saveSettings() {
-    settingsFile.setText(JSON.stringify({ fontSize: fontSizeChoice, namespace: namespace, recentCommands: recentCommandNames }))
+    settingsFile.setText(JSON.stringify({
+      fontSize: fontSizeChoice,
+      namespace: namespace,
+      recentCommands: recentCommandNames,
+      savedNamespaces: savedNamespaces
+    }))
   }
 
   FileView {
@@ -112,6 +143,10 @@ Item {
           root.namespace = parsed.namespace.trim()
         if (parsed && Array.isArray(parsed.recentCommands))
           root.recentCommandNames = parsed.recentCommands.filter(function(n) { return typeof n === "string" })
+        if (parsed && Array.isArray(parsed.savedNamespaces))
+          root.savedNamespaces = parsed.savedNamespaces.filter(function(n) { return typeof n === "string" && n.trim() !== "" })
+        if (root.savedNamespaces.indexOf(root.namespace) === -1)
+          root.savedNamespaces = root.savedNamespaces.concat([root.namespace])
       } catch (e) { /* ignore malformed state file */ }
     }
   }
@@ -503,10 +538,35 @@ Item {
                 accent: Color.accent
                 onToggled: root.setTcbOnly(!root.tcbOnly)
               }
+              // Quick-switch among saved namespaces without opening
+              // Settings. Manage the saved list itself (add/remove) there.
+              Dropdown {
+                visible: root.tcbOnly
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(130)
+                showLabel: false
+                foreground: Color.foreground
+                background: Color.popups.background
+                accent: Color.accent
+                fontFamily: root.fontFamily
+                options: root.savedNamespaces
+                value: root.namespace
+                onChanged: function(v) { root.setNamespace(v) }
+              }
               Text {
+                visible: root.tcbOnly
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.tcbOnly ? (root.namespace + " commands only") : "All commands"
+                text: "commands only"
+                color: Color.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fsCaption
+              }
+              Text {
+                visible: !root.tcbOnly
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                text: "All commands"
                 color: Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: root.fsCaption
@@ -514,7 +574,7 @@ Item {
               PanelActionButton {
                 anchors.verticalCenter: parent.verticalCenter
                 iconText: "󰒓"
-                tooltipText: "Change command namespace"
+                tooltipText: "Manage command namespaces"
                 foreground: Color.foreground
                 fontFamily: root.fontFamily
                 onClicked: root.openSettings()
@@ -591,10 +651,10 @@ Item {
                   Column {
                     id: rowContent
                     anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.right: removeRecentBtn.visible ? removeRecentBtn.left : parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.leftMargin: Style.space(10)
-                    anchors.rightMargin: Style.space(10)
+                    anchors.rightMargin: removeRecentBtn.visible ? Style.space(8) : Style.space(10)
                     spacing: Style.space(2)
 
                     Text {
@@ -628,6 +688,21 @@ Item {
                       root.highlightedIndex = rowDelegate.index
                       root.selectCommand(rowDelegate.modelData)
                     }
+                  }
+
+                  // Only for rows currently in the recent list, and only
+                  // surfaced on hover/keyboard-highlight - a permanently
+                  // visible "x" on every recent row would be noisy.
+                  PanelActionButton {
+                    id: removeRecentBtn
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: rowDelegate.isRecent && (rowMouse.containsMouse || rowDelegate.isHighlighted)
+                    iconText: "󰅙"
+                    tooltipText: "Remove from recent"
+                    foreground: Color.foreground
+                    fontFamily: root.fontFamily
+                    onClicked: root.removeRecentCommand(rowDelegate.modelData.name)
                   }
                 }
 
@@ -1053,7 +1128,7 @@ Item {
         color: Util.alpha(Color.background, 0.75)
 
         // Swallows clicks so they don't reach the command list/form behind
-        // the scrim - closing requires Cancel/Save/Escape, not a stray click.
+        // the scrim - closing requires Done/Escape, not a stray click.
         MouseArea { anchors.fill: parent }
 
         Rectangle {
@@ -1091,7 +1166,7 @@ Item {
 
               Text {
                 textFormat: Text.PlainText
-                text: "Command namespace"
+                text: "Command namespaces"
                 color: Color.foreground
                 font.family: root.fontFamily
                 font.pixelSize: root.fsBody
@@ -1101,22 +1176,88 @@ Item {
                 textFormat: Text.PlainText
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "The Unity CLI namespace this tool searches by default (e.g. \"tcb::\" or \"myco::\"). Your project's [CliCommand] methods need to live under this prefix - including \""
+                text: "Save the namespace(s) your Unity projects use (e.g. \"tcb::\" or \"myco::\"), then switch between them from the dropdown next to search. Your project's [CliCommand] methods need to live under the active prefix - including \""
                   + root.namespace + "get_unit_names\" and \"" + root.namespace + "get_manager_names\" if you want the unit/manager dropdowns to work."
                 color: Qt.darker(Color.foreground, 1.5)
                 font.family: root.fontFamily
                 font.pixelSize: root.fsCaption
               }
-              TextField {
-                id: namespaceDraftField
+
+              Column {
                 width: parent.width
-                foreground: Color.foreground
-                accent: Color.accent
-                font.family: root.fontFamily
-                font.pixelSize: root.fsBody
-                placeholderText: "tcb::"
-                Keys.onReturnPressed: root.saveSettingsDialog()
-                Keys.onEscapePressed: root.closeSettings()
+                spacing: Style.space(4)
+
+                Repeater {
+                  model: root.savedNamespaces
+
+                  delegate: Item {
+                    id: nsRow
+                    required property string modelData
+                    required property int index
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: nsRowContent.implicitHeight + Style.space(6)
+                    readonly property bool isActive: nsRow.modelData === root.namespace
+
+                    Row {
+                      id: nsRowContent
+                      anchors.left: parent.left
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(10)
+
+                      Text {
+                        textFormat: Text.PlainText
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: nsRow.modelData + (nsRow.isActive ? " (active)" : "")
+                        color: nsRow.isActive ? Color.accent : Color.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fsBody
+                        font.bold: nsRow.isActive
+                      }
+                      Button {
+                        visible: !nsRow.isActive
+                        text: "Switch"
+                        bordered: true
+                        focusable: true
+                        fontFamily: root.fontFamily
+                        onClicked: root.setNamespace(nsRow.modelData)
+                      }
+                      Button {
+                        visible: root.savedNamespaces.length > 1
+                        text: "Remove"
+                        bordered: true
+                        focusable: true
+                        fontFamily: root.fontFamily
+                        onClicked: root.removeNamespace(nsRow.modelData)
+                      }
+                    }
+                  }
+                }
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(8)
+
+                TextField {
+                  id: newNamespaceField
+                  width: parent.width - addNamespaceButton.width - parent.spacing
+                  foreground: Color.foreground
+                  accent: Color.accent
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fsBody
+                  placeholderText: "Add a namespace, e.g. myco::"
+                  Keys.onReturnPressed: root.addNamespaceFromDialog()
+                  Keys.onEscapePressed: root.closeSettings()
+                }
+                Button {
+                  id: addNamespaceButton
+                  text: "Add"
+                  bordered: true
+                  focusable: true
+                  fontFamily: root.fontFamily
+                  onClicked: root.addNamespaceFromDialog()
+                }
               }
             }
 
@@ -1125,18 +1266,11 @@ Item {
               spacing: Style.space(10)
 
               Button {
-                text: "Cancel"
+                text: "Done"
                 bordered: true
                 focusable: true
                 fontFamily: root.fontFamily
                 onClicked: root.closeSettings()
-              }
-              Button {
-                text: "Save"
-                bordered: true
-                focusable: true
-                fontFamily: root.fontFamily
-                onClicked: root.saveSettingsDialog()
               }
             }
           }
