@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.6.1"
+  readonly property string appVersion: "1.7.0"
 
   property var bar: null
   readonly property bool opened: window.visible
@@ -344,6 +344,22 @@ Item {
     id: commandCopiedTimer
     interval: 1500
     onTriggered: root.commandCopied = false
+  }
+
+  property bool jsonCopied: false
+
+  function copyJsonToClipboard() {
+    if (!lastResult || !lastResult.payload) return
+    var json = JSON.stringify(lastResult.payload, null, 2)
+    Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(json) + " | wl-copy"])
+    jsonCopied = true
+    jsonCopiedTimer.restart()
+  }
+
+  Timer {
+    id: jsonCopiedTimer
+    interval: 1500
+    onTriggered: root.jsonCopied = false
   }
 
   Process {
@@ -1060,6 +1076,17 @@ Item {
                         horizontalPadding: Style.spacing.controlGap
                         verticalPadding: Style.spacing.xxs
                         onClicked: root.showRawJson = !root.showRawJson
+                      }
+
+                      Button {
+                        visible: root.lastResult && root.lastResult.status === "success"
+                        text: root.jsonCopied ? "Copied!" : "Copy JSON"
+                        bordered: true
+                        fontFamily: root.fontFamily
+                        fontSize: root.fsCaption
+                        horizontalPadding: Style.spacing.controlGap
+                        verticalPadding: Style.spacing.xxs
+                        onClicked: root.copyJsonToClipboard()
                       }
                     }
 
