@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.7.0"
+  readonly property string appVersion: "1.8.0"
 
   property var bar: null
   readonly property bool opened: window.visible

@@ -1,6 +1,6 @@
 # Unity Commander
 
-An [Omarchy](https://omarchy.org/) bar plugin for browsing and running Unity CLI commands — under your own namespace, or every command the connected Editor/Player exposes — from a searchable panel, no terminal required.
+An [Omarchy](https://omarchy.org/) panel plugin (its own window, no bar chip) for browsing and running Unity CLI commands — under your own namespace, or every command the connected Editor/Player exposes — from a searchable panel, no terminal required.
 
 ## Features
 
@@ -33,7 +33,7 @@ omarchy plugin enable chris.unity-commander
 
 ## Usage
 
-Click the **UC** chip in the bar (or `omarchy-shell shell toggle chris.unity-commander`). Search for a command, fill in its parameters, hit **Run command**.
+Open it with **SUPER+SHIFT+U**, by searching "Unity Commander" in the app launcher, or with `omarchy-shell shell toggle chris.unity-commander`. Search for a command, fill in its parameters, hit **Run command**.
 
 ## Configuring your namespace
 
@@ -51,12 +51,11 @@ For example, with the namespace set to `myco::`, the plugin will call `myco::get
 | File | Purpose |
 |---|---|
 | `manifest.json` | Plugin metadata + version |
-| `BarWidget.qml` | The "UC" bar chip |
 | `Window.qml` | The app itself: command list + parameter form + results |
 | `ResultRowView.qml` | One row of the human-readable results view (recursive, foldable) |
 | `Model.js` | All non-UI logic: fuzzy search, CLI arg building, response parsing, JSON→rows |
 
-No build step — edit a file and save; the running bar picks it up automatically. See `manifest.json`'s `version` before making changes, and bump `root.appVersion` in `Window.qml` alongside it.
+No build step — edit a file and save; the running shell picks it up automatically. See `manifest.json`'s `version` before making changes, and bump `root.appVersion` in `Window.qml` alongside it.
 
 ## License
 

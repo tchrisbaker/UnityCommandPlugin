@@ -2,20 +2,15 @@
   "schemaVersion": 1,
   "id": "chris.unity-commander",
   "name": "Unity Commander",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "author": "Chris Baker",
   "license": "MIT",
-  "description": "Browse and run Unity CLI commands under a configurable namespace from a searchable panel, with parameter forms, unit/manager pickers, and clear success/error results.",
+  "description": "Browse and run Unity CLI commands under a configurable namespace from a searchable window, with parameter forms, unit/manager pickers, and clear success/error results.",
   "kinds": [
-    "bar-widget"
+    "panel"
   ],
+  "keepLoaded": true,
   "entryPoints": {
-    "barWidget": "BarWidget.qml"
-  },
-  "barWidget": {
-    "displayName": "Unity Commander",
-    "description": "Browse and run Unity CLI commands",
-    "category": "Development",
-    "allowMultiple": false
+    "panel": "Window.qml"
   }
 }
