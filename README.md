@@ -33,7 +33,34 @@ omarchy plugin enable chris.unity-commander
 
 ## Usage
 
-Open it with **SUPER+SHIFT+U**, by searching "Unity Commander" in the app launcher, or with `omarchy-shell shell toggle chris.unity-commander`. Search for a command, fill in its parameters, hit **Run command**.
+Unity Commander is a panel, a window of its own with no bar chip. Open (and close) it with:
+
+```sh
+omarchy-shell shell toggle chris.unity-commander
+```
+
+Search for a command, fill in its parameters, hit **Run command**.
+
+To give it a key, add a binding to `~/.config/hypr/bindings.lua` (pick any free key; check with `omarchy menu keybindings --print`):
+
+```lua
+o.bind("SUPER + SHIFT + U", "Unity Commander", "omarchy-shell shell toggle chris.unity-commander")
+```
+
+To make it show up in the app launcher, save this as `~/.local/share/applications/unity-commander.desktop`:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Unity Commander
+Comment=Browse and run Unity CLI commands
+Exec=omarchy-shell shell toggle chris.unity-commander
+Icon=unity
+Terminal=false
+Categories=Development;
+```
+
+**Upgrading from 1.7.x (the bar-widget version):** the plugin is now a panel, so it belongs in the top-level `plugins[]` list in `~/.config/omarchy/shell.json` instead of in `bar.layout`. Run `omarchy plugin enable chris.unity-commander` again after updating, or move the `{"id": "chris.unity-commander"}` entry yourself.
 
 ## Configuring your namespace
 
