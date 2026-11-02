@@ -10,6 +10,7 @@ An [Omarchy](https://omarchy.org/) panel plugin (its own window, no bar chip) fo
 - **Auto-generated parameter forms**: checkboxes for booleans, fuzzy-searchable dropdowns for `unit`/`*manager*` parameters (refreshed live from the connected Editor each time you open the dropdown, with a way to clear the selection), number steppers (with an explicit "Clear" for optional ones), text fields for everything else — required vs. optional is called out on every field
 - **Run** a command and get the result back as a readable, foldable view (long lists collapse to just their first item's title, click to expand) — or flip to raw JSON
 - **Copy command**: puts the exact `unity cmd ...` invocation, with your current parameter values, on the clipboard
+- **Project picker** when more than one Unity Editor is running: choose which project the commands go to (it's passed as `--project-path` on every call, including the copied command). Your last choice is remembered, and the picker hides itself when only one Editor is open
 - Clearly separates **"Unity isn't running / not reachable"** from **"command executed but returned an error"** — they need different reactions
 - Follows the active Omarchy theme's colors; font size is adjustable (small/medium/large)
 

@@ -147,7 +147,7 @@ function filterCommands(commands, query) {
 // command given its current form values. Optional blank fields are
 // omitted entirely so the CLI's own default applies; booleans are always
 // passed explicitly since a checkbox always has a definite state.
-function buildArgs(command, values) {
+function buildArgs(command, values, projectPath) {
   var args = ["cmd", String(command.name)]
   var params = command.parameters || []
   for (var i = 0; i < params.length; i++) {
@@ -162,8 +162,55 @@ function buildArgs(command, values) {
     if (v === undefined || v === null || String(v) === "") continue
     args.push("--" + p.name, String(v))
   }
+  args = args.concat(targetArgs(projectPath))
   args.push("--json")
   return args
+}
+
+// ---- which Unity Editor to talk to -----------------------------------------
+// With more than one Editor running, `unity cmd` refuses to guess unless the
+// caller's cwd is inside one of the projects - and this plugin runs inside
+// the shell, which never is. So every call names its project explicitly.
+// An empty path means "let the CLI auto-detect" (the one-Editor case).
+function targetArgs(projectPath) {
+  return projectPath ? ["--project-path", String(projectPath)] : []
+}
+
+function projectName(projectPath) {
+  var parts = String(projectPath || "").split("/").filter(function(s) { return s !== "" })
+  return parts.length > 0 ? parts[parts.length - 1] : String(projectPath || "")
+}
+
+// `unity status --json` → [{ projectPath, name, port, state }], one per
+// running Editor (Multiplayer Play Mode clones of the same project collapse
+// into one entry, since --project-path can't tell them apart anyway).
+// Anything unparseable (CLI missing, no Editors) is just an empty list.
+function parseEditorList(stdoutText) {
+  var parsed = null
+  try { parsed = JSON.parse(stdoutText) } catch (e) { return [] }
+  if (!parsed || parsed.success !== true || !parsed.data) return []
+  var instances = parsed.data.instances || parsed.data.items || []
+  var out = []
+  var seen = {}
+  for (var i = 0; i < instances.length; i++) {
+    var inst = instances[i] || {}
+    var path = String(inst.projectPath || inst.project || "")
+    if (path === "" || seen[path]) continue
+    seen[path] = true
+    out.push({ projectPath: path, name: projectName(path), port: inst.port, state: String(inst.state || "") })
+  }
+  return out
+}
+
+// The project to target given the running Editors and the user's last pick:
+// the last pick if it's still running, else the first running one. "" when
+// nothing is running, so the CLI's own "not reachable" error comes through.
+function chooseProject(editors, preferred) {
+  if (!editors || editors.length === 0) return ""
+  for (var i = 0; i < editors.length; i++) {
+    if (editors[i].projectPath === preferred) return preferred
+  }
+  return editors[0].projectPath
 }
 
 // Required parameters (excluding booleans, which always carry a value)

@@ -17,7 +17,7 @@ Item {
   // "version" by hand. Small enough plugin that a second source of truth
   // isn't worth reading the manifest file at runtime for - but it means
   // "is this actually the build you just updated" never has to be a guess.
-  readonly property string appVersion: "1.8.0"
+  readonly property string appVersion: "1.9.0"
 
   property var bar: null
   readonly property bool opened: window.visible
@@ -29,7 +29,7 @@ Item {
     // "show me everything" is an occasional escape hatch, not something
     // that should silently persist across sessions.
     tcbOnly = true
-    refreshCommands()
+    refreshEditors()
     Qt.callLater(function() {
       if (searchField) searchField.forceActiveFocus()
     })
@@ -88,6 +88,54 @@ Item {
     saveSettings()
   }
 
+  // ---- target Unity Editor (last pick persisted) ---------------------------
+  // With two or more Editors open, `unity cmd` can't tell which one is meant
+  // (it auto-detects from the cwd, and the shell's cwd is never a project),
+  // so every call passes --project-path. `editors` is refreshed from
+  // `unity status` on every open() and on the refresh button.
+  property var editors: []            // [{ projectPath, name, port, state }]
+  property bool editorsLoading: false
+  property string preferredProject: "" // last pick, persisted - may not be running right now
+  property string activeProject: ""    // what calls actually target; "" = let the CLI auto-detect
+
+  function refreshEditors() {
+    if (statusProc.running) return
+    editorsLoading = true
+    statusProc.running = true
+  }
+
+  function setProject(path) {
+    if (!path || path === activeProject) return
+    preferredProject = path
+    saveSettings()
+    applyActiveProject(path)
+  }
+
+  function applyActiveProject(path) {
+    var changed = path !== activeProject
+    activeProject = path
+    if (changed) {
+      // Commands, unit and manager names all belong to the old project.
+      selectedCommand = null
+      lastResult = null
+      unitNames = []
+      managerNames = []
+    }
+    refreshCommands()
+  }
+
+  Process {
+    id: statusProc
+    command: ["unity", "status", "--json"]
+    stdout: StdioCollector { id: statusStdout; waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true }
+    onExited: function(exitCode) {
+      root.editorsLoading = false
+      root.editors = Model.parseEditorList(statusStdout.text)
+      root.applyActiveProject(Model.chooseProject(root.editors, root.preferredProject))
+    }
+  }
+
   // ---- settings dialog ------------------------------------------------------
   property bool settingsOpen: false
 
@@ -125,7 +173,8 @@ Item {
       fontSize: fontSizeChoice,
       namespace: namespace,
       recentCommands: recentCommandNames,
-      savedNamespaces: savedNamespaces
+      savedNamespaces: savedNamespaces,
+      project: preferredProject
     }))
   }
 
@@ -153,6 +202,8 @@ Item {
           root.recentCommandNames = parsed.recentCommands.filter(function(n) { return typeof n === "string" })
         if (parsed && Array.isArray(parsed.savedNamespaces))
           root.savedNamespaces = parsed.savedNamespaces.filter(function(n) { return typeof n === "string" && n.trim() !== "" })
+        if (parsed && typeof parsed.project === "string")
+          root.preferredProject = parsed.project
         if (root.savedNamespaces.indexOf(root.namespace) === -1)
           root.savedNamespaces = root.savedNamespaces.concat([root.namespace])
       } catch (e) { /* ignore malformed state file */ }
@@ -185,13 +236,18 @@ Item {
   property var listStatus: null // { status, message } | null while loading/ok
   property string projectPath: ""
 
+  // The project the in-flight listing was started for. If the user switches
+  // projects mid-listing, the result is stale - onExited re-lists instead.
+  property string listingProject: ""
+
   function refreshCommands() {
     if (listProc.running) return
     commandsLoading = true
     listStatus = null
-    listProc.command = tcbOnly
+    listingProject = activeProject
+    listProc.command = (tcbOnly
       ? ["unity", "cmd", "--query", namespace, "--json", "--timeout", "15"]
-      : ["unity", "cmd", "--json", "--timeout", "15"]
+      : ["unity", "cmd", "--json", "--timeout", "15"]).concat(Model.targetArgs(activeProject))
     listProc.running = true
   }
 
@@ -201,6 +257,10 @@ Item {
     stderr: StdioCollector { id: listStderr; waitForEnd: true }
     onExited: function(exitCode) {
       root.commandsLoading = false
+      if (root.listingProject !== root.activeProject) {
+        root.refreshCommands()
+        return
+      }
       var classified = Model.classifyResponse(listStdout.text, listStderr.text)
       if (classified.status === "success") {
         try {
@@ -263,14 +323,14 @@ Item {
   function refreshUnitNames() {
     if (unitNamesProc.running) return
     unitNamesLoading = true
-    unitNamesProc.command = ["unity", "cmd", namespace + "get_unit_names", "--json", "--timeout", "10"]
+    unitNamesProc.command = ["unity", "cmd", namespace + "get_unit_names", "--json", "--timeout", "10"].concat(Model.targetArgs(activeProject))
     unitNamesProc.running = true
   }
 
   function refreshManagerNames() {
     if (managerNamesProc.running) return
     managerNamesLoading = true
-    managerNamesProc.command = ["unity", "cmd", namespace + "get_manager_names", "--json", "--timeout", "10"]
+    managerNamesProc.command = ["unity", "cmd", namespace + "get_manager_names", "--json", "--timeout", "10"].concat(Model.targetArgs(activeProject))
     managerNamesProc.running = true
   }
 
@@ -325,7 +385,7 @@ Item {
     lastResult = null
     running = true
     recordRecentCommand(selectedCommand.name)
-    execProc.command = ["unity"].concat(Model.buildArgs(selectedCommand, paramValues))
+    execProc.command = ["unity"].concat(Model.buildArgs(selectedCommand, paramValues, activeProject))
     execProc.running = true
   }
 
@@ -333,7 +393,7 @@ Item {
 
   function copyCommandToClipboard() {
     if (!selectedCommand) return
-    var args = ["unity"].concat(Model.buildArgs(selectedCommand, paramValues))
+    var args = ["unity"].concat(Model.buildArgs(selectedCommand, paramValues, activeProject))
     var line = args.map(function(a) { return Util.shellQuote(a) }).join(" ")
     Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(line) + " | wl-copy"])
     commandCopied = true
@@ -493,11 +553,43 @@ Item {
                 id: refreshButton
                 anchors.verticalCenter: parent.verticalCenter
                 iconText: "󰑐"
-                tooltipText: "Refresh command list"
-                iconSpinning: root.commandsLoading
+                tooltipText: "Refresh running Editors and command list"
+                iconSpinning: root.commandsLoading || root.editorsLoading
                 horizontalPadding: Style.spacing.controlGap
                 verticalPadding: Style.spacing.labelGap
-                onClicked: root.refreshCommands()
+                onClicked: root.refreshEditors()
+              }
+            }
+
+            // Project picker - only when there's an actual choice to make.
+            // With a single Editor running the CLI auto-detects it fine.
+            Row {
+              width: parent.width
+              visible: root.editors.length > 1
+              spacing: Style.space(8)
+
+              Text {
+                id: projectLabel
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Project"
+                color: Color.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fsCaption
+              }
+              Dropdown {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - projectLabel.width - parent.spacing
+                showLabel: false
+                foreground: Color.foreground
+                background: Color.popups.background
+                accent: Color.accent
+                fontFamily: root.fontFamily
+                options: root.editors.map(function(e) {
+                  return { value: e.projectPath, label: e.name + "  ·  :" + e.port }
+                })
+                value: root.activeProject
+                onChanged: function(v) { root.setProject(v) }
               }
             }
 
